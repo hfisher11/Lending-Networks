@@ -1,0 +1,338 @@
+---
+title: CURI Banks Provisional Data Visualization
+author: Henry Fisher
+output: 
+  pdf_document:
+    fig_height: 3.5
+    fig_width: 7
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(stargazer)
+library(tidyverse)
+```
+
+
+```{r, include = FALSE}
+#Import Dataset
+outcomes_0 <- read_csv("~/CURI 2023/CURI_outcomes_1.csv")
+```
+
+
+```{r, include = FALSE}
+#Data Cleaning
+outcomes <- outcomes_0 %>%
+  rename(repetition = repition,
+         shortfall_j = shorfall_j) %>%
+  #shortfall boolean values are reversed
+  mutate(shortfall_i = if_else(shortfall_i == FALSE, 1, 0),
+         shortfall_j = if_else(shortfall_j == FALSE, 1, 0),
+         delta_total_shortfall_dollars = new_total_shortfall_dollars - old_total_shortfall_dollars,
+         delta_delinquent_count = new_delinquent_count - old_delinquent_count,
+         delta_shortfall_loan_count = new_shortfall_loan_count - old_shortfall_loan_count) %>%
+  select(2,4,3,5:10,14,12,15:21)
+```
+
+**Total Shortfall (Models 1-3)**
+
+Model 1 (Total Shortfall, bank_i = bank_k) $y_i = \beta_1 + \beta_2 A_k + \beta_3 in-degree_k + \beta_4 out-degree_k + \epsilon_i$
+```{r}
+total.shortfall.i.lm <- lm(delta_total_shortfall_dollars ~ A_i + in_deg_i + out_deg_i, outcomes)
+summary(total.shortfall.i.lm)
+```
+
+```{r, include=FALSE}
+stargazer(total.shortfall.i.lm)
+```
+
+
+Model 2 (Total Shortfall, bank_j) $y_i = \beta_1 + \beta_2 A_j + \beta_3 in-degree_j + \beta_4 out-degree_j + \epsilon_i$
+```{r}
+total.shortfall.j.lm <- lm(delta_total_shortfall_dollars ~ A_j + in_deg_j + out_deg_j, outcomes)
+summary(total.shortfall.j.lm)
+```
+
+```{r, include = FALSE}
+stargazer(total.shortfall.j.lm)
+```
+
+
+Model 3 (Total Shortfall, both i and j) $y_i = \beta_1 + \beta_2 A_k + \beta_3 A_j + \beta_4 in-degree_k + \beta_5 in-degree_j + \beta_6 out-degree_k + \beta_7 out-degree_j + \epsilon_i$
+```{r}
+total.shortfall.lm <- lm(delta_total_shortfall_dollars ~ A_i + A_j + in_deg_i + in_deg_j + out_deg_i + out_deg_j, outcomes)
+summary(total.shortfall.lm)
+```
+
+```{r, include = FALSE}
+stargazer(total.shortfall.lm)
+```
+
+
+##Total Loans with Shortfall (Models 4-6)##
+
+Model 4 (Loans with Shortfall, bank_i = bank_k) $y_i = \beta_1 + \beta_2 A_k + \beta_3 in-degree_k + \beta_4 out-degree_k + \epsilon_i$
+```{r}
+total.loans.i.lm <- lm(delta_shortfall_loan_count ~ A_i + in_deg_i + out_deg_i, outcomes)
+summary(total.loans.i.lm)
+```
+
+```{r, include = FALSE}
+stargazer(total.loans.i.lm)
+```
+
+Model 5 (Loans with Shortfall, bank_i = bank_k) $y_i = \beta_1 + \beta_2 A_j + \beta_3 in-degree_j + \beta_4 out-degree_j + \epsilon_i$
+```{r}
+total.loans.j.lm <- lm(delta_shortfall_loan_count ~ A_j + in_deg_j + out_deg_j, outcomes)
+summary(total.loans.j.lm)
+```
+
+```{r, include = FALSE}
+stargazer(total.loans.j.lm)
+```
+
+Model 6 (Loans with Shortfall,, both i and j) $y_i = \beta_1 + \beta_2 A_k + \beta_3 A_j + \beta_4 in-degree_k + \beta_5 in-degree_j + \beta_6 out-degree_k + \beta_7 out-degree_j + \epsilon_i$
+```{r}
+total.loans.lm <- lm(delta_shortfall_loan_count ~ A_i + A_j + in_deg_i + in_deg_j + out_deg_i + out_deg_j, outcomes)
+summary(total.loans.lm)
+```
+
+```{r, include = FALSE}
+stargazer(total.loans.lm)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & delta\_total\_shortfall\_dollars \\ 
+\hline \\[-1.8ex] 
+ A\_i & $-$0.760 \\ 
+  & (0.919) \\ 
+  & \\ 
+ in\_deg\_i & $-$13.833$^{***}$ \\ 
+  & (0.983) \\ 
+  & \\ 
+ out\_deg\_i & 15.716$^{***}$ \\ 
+  & (1.015) \\ 
+  & \\ 
+ Constant & 3.934 \\ 
+  & (13.936) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 2,000 \\ 
+R$^{2}$ & 0.110 \\ 
+Adjusted R$^{2}$ & 0.109 \\ 
+Residual Std. Error & 206.733 (df = 1996) \\ 
+F Statistic & 82.356$^{***}$ (df = 3; 1996) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table}
+
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & delta\_total\_shortfall\_dollars \\ 
+\hline \\[-1.8ex] 
+ A\_j & 1.281 \\ 
+  & (0.892) \\ 
+  & \\ 
+ in\_deg\_j & 18.314$^{***}$ \\ 
+  & (1.011) \\ 
+  & \\ 
+ out\_deg\_j & $-$20.364$^{***}$ \\ 
+  & (0.986) \\ 
+  & \\ 
+ Constant & 70.606$^{***}$ \\ 
+  & (12.881) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 2,000 \\ 
+R$^{2}$ & 0.177 \\ 
+Adjusted R$^{2}$ & 0.176 \\ 
+Residual Std. Error & 198.804 (df = 1996) \\ 
+F Statistic & 143.188$^{***}$ (df = 3; 1996) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & delta\_total\_shortfall\_dollars \\ 
+\hline \\[-1.8ex] 
+ A\_i & $-$0.946 \\ 
+  & (0.818) \\ 
+  & \\ 
+ A\_j & 1.317 \\ 
+  & (0.825) \\ 
+  & \\ 
+ in\_deg\_i & $-$14.563$^{***}$ \\ 
+  & (0.876) \\ 
+  & \\ 
+ in\_deg\_j & 18.866$^{***}$ \\ 
+  & (0.936) \\ 
+  & \\ 
+ out\_deg\_i & 16.289$^{***}$ \\ 
+  & (0.904) \\ 
+  & \\ 
+ out\_deg\_j & $-$20.886$^{***}$ \\ 
+  & (0.913) \\ 
+  & \\ 
+ Constant & 42.891$^{**}$ \\ 
+  & (17.055) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 2,000 \\ 
+R$^{2}$ & 0.296 \\ 
+Adjusted R$^{2}$ & 0.294 \\ 
+Residual Std. Error & 183.966 (df = 1993) \\ 
+F Statistic & 139.934$^{***}$ (df = 6; 1993) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+
+
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & delta\_shortfall\_loan\_count \\ 
+\hline \\[-1.8ex] 
+ A\_i & 0.017 \\ 
+  & (0.033) \\ 
+  & \\ 
+ in\_deg\_i & 0.028 \\ 
+  & (0.036) \\ 
+  & \\ 
+ out\_deg\_i & $-$0.013 \\ 
+  & (0.037) \\ 
+  & \\ 
+ Constant & 0.565 \\ 
+  & (0.506) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 2,000 \\ 
+R$^{2}$ & 0.001 \\ 
+Adjusted R$^{2}$ & $-$0.001 \\ 
+Residual Std. Error & 7.504 (df = 1996) \\ 
+F Statistic & 0.355 (df = 3; 1996) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & delta\_shortfall\_loan\_count \\ 
+\hline \\[-1.8ex] 
+ A\_j & 0.018 \\ 
+  & (0.034) \\ 
+  & \\ 
+ in\_deg\_j & 0.026 \\ 
+  & (0.038) \\ 
+  & \\ 
+ out\_deg\_j & $-$0.022 \\ 
+  & (0.037) \\ 
+  & \\ 
+ Constant & 0.710 \\ 
+  & (0.486) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 2,000 \\ 
+R$^{2}$ & 0.0004 \\ 
+Adjusted R$^{2}$ & $-$0.001 \\ 
+Residual Std. Error & 7.505 (df = 1996) \\ 
+F Statistic & 0.245 (df = 3; 1996) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+
+
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & delta\_shortfall\_loan\_count \\ 
+\hline \\[-1.8ex] 
+ A\_i & 0.017 \\ 
+  & (0.033) \\ 
+  & \\ 
+ A\_j & 0.019 \\ 
+  & (0.034) \\ 
+  & \\ 
+ in\_deg\_i & 0.028 \\ 
+  & (0.036) \\ 
+  & \\ 
+ in\_deg\_j & 0.026 \\ 
+  & (0.038) \\ 
+  & \\ 
+ out\_deg\_i & $-$0.012 \\ 
+  & (0.037) \\ 
+  & \\ 
+ out\_deg\_j & $-$0.020 \\ 
+  & (0.037) \\ 
+  & \\ 
+ Constant & 0.310 \\ 
+  & (0.696) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 2,000 \\ 
+R$^{2}$ & 0.001 \\ 
+Adjusted R$^{2}$ & $-$0.002 \\ 
+Residual Std. Error & 7.508 (df = 1993) \\ 
+F Statistic & 0.301 (df = 6; 1993) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
