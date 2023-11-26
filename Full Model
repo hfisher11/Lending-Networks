@@ -1,0 +1,393 @@
+# Authors: Henry Fisher, Yanet Tadele, Andrew Skemp
+
+import networkx as nx
+import numpy as np
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components, dijkstra
+from networkx.algorithms.bipartite.cluster import average_clustering
+from scipy.optimize import fsolve
+import random as rd
+import matplotlib.pyplot as plt
+
+#--------------------------------- create random network ----------------------------------
+
+def generate_random_graph(n, m, p):
+
+# Generate the first graph
+  G_one = nx.powerlaw_cluster_graph(n, m, p)
+  yij_one = nx.to_numpy_array(G_one)
+
+# Generate the second graph
+  G_two = nx.powerlaw_cluster_graph(n, m, p)
+  yij_two = nx.to_numpy_array(G_two)
+
+  G = nx.DiGraph()
+  G.add_nodes_from(range(n))
+
+  for i in range(n):
+    for j in range(n):
+      if i > j:
+        if yij_one[i][j] != 0:
+              G.add_edge(i, j)
+      elif i < j:
+        if yij_two[i][j] != 0:
+              G.add_edge(i, j)
+
+  adj_matrix = nx.to_numpy_array(G)
+  return G
+
+#----------------------------------- add random link -------------------------------------
+
+## Here define the function to add a random link
+## Takes on an input x which is a matrix
+def add_random_link(x):
+  ##defines n which is the length of said matrix
+  n = len(x)
+  ##creates a copy matrix to change and then compare to og matrix
+  x1 = np.copy(x)
+  ##uses while loop that should break once the arrays are not equal
+  while np.array_equal(x, x1):
+    ##chooses row and column randomly
+    row_choice = rd.randint(0, n-1)
+    col_choice = rd.randint(0, n-1)
+    ## checks if there is no link in said row or column (can be modified to also check if row and column are not a diagonal)
+    if x1[row_choice, col_choice] == 0 and col_choice != row_choice:
+      ### if there is no link then adds the link and therefore breaks the while loop
+      x1[row_choice, col_choice] += 100
+    ##returns the new matrix to be compared to the old one and then to be printed
+  return x1
+
+def drop_random_link(x):
+  ##defines n which is the length of said matrix
+  n = len(x)
+  ##creates a copy matrix to change and then compare to og matrix
+  x1 = np.copy(x)
+  ##uses while loop that should break once the arrays are not equal
+  while np.array_equal(x, x1):
+    ##chooses row and column randomly
+    row_choice = rd.randint(0, n-1)
+    col_choice = rd.randint(0, n-1)
+    col_sums = np.sum(x, axis = 0)
+    row_sums = np.sum(x, axis = 1)
+    ## checks if there is no link in said row or column (can be modified to also check if row and column are not a diagonal)
+    if x1[row_choice, col_choice] != 0 and row_sums[row_choice] > 100 and col_sums[col_choice] > 100:
+      ### if there is no link then adds the link and therefore breaks the while loop
+      x1[row_choice, col_choice] -= 100
+    ##returns the new matrix to be compared to the old one and then to be printed
+  return x1
+
+#------------------------------------------solve for rij--------------------------------------
+
+# Define constraints
+c = 15.9  # cash on hand
+zj = 0  # short term investment return
+#A = np.random.normal(10, 5, (len(yij)))  # long term project result
+v = 2.9 # senior obligations
+# Function to generate and solve the system of equations
+def solve_rij(yij, A):
+    def Bankfunc(z):
+        F = np.empty(yij.size) #creates an empty array (or maybe list? data structure) the same size as yij
+        for j in range(len(yij)): #each j is a column in the adjacency matrix #we switched the i and j for loops so we can calculate yj n times instead of n*n times
+          yj = np.sum(yij[:, j]) #this calculates the total debt (yj) for each bank j
+          Aj = A[j]
+          for i in range(len(yij)): #each i is a row in the adjacency matrix
+            if yij[i, j] == 0:
+              F[i*len(yij)+j] = z[i*len(yij)+j] #if yij = 0 then we assume rij = 0
+            else:
+              F[i*len(yij)+j] = yij[i, j] / yj * max(min(yj, np.sum(z[j*len(yij):j*len(yij)+(len(yij))]) + c + zj + Aj - v), 0) - z[i*len(yij)+j] #the actual math of the model
+        return F
+
+    # Initial guess for z
+    z_guess = np.full(yij.size, 100)
+
+    # Solve for rij using fsolve
+    z_solution = fsolve(Bankfunc, z_guess)
+
+    # Reshape the solution back to the original shape of yij
+    rij_solution = z_solution.reshape(yij.shape)
+
+    # go through every value in the matrix and check if it is very small
+    for i in range(len(rij_solution)):
+      for j in range(len(rij_solution)):
+        if rij_solution[i,j] < 0.000001:
+      # if it is very small then we just make it zero for both matricies
+          rij_solution[i,j] = 0
+
+    return rij_solution
+
+
+#----------------------------------------------Network Analytics stuff---------------------------------------------
+
+def write_results_as_matrix(results):
+    for key, values in results.items():
+        print(key)
+        matrix = np.array(values)
+        print(matrix)
+        print()
+
+##define function to identify which bank became the new loaner
+def new_loaner(old_matrix, new_matrix):
+  #go through each row
+  for i in range(len(old_matrix)):
+    #go through each column
+    for j in range(len(old_matrix)):
+      # check to see if the old matrix value is equal to the new matrix value
+      if old_matrix[i, j] != new_matrix[i,j]:
+        #return the number bank which is the new loaner
+        return i
+
+#define function to identify which bank became the new borrower
+def new_borrower(old_matrix, new_matrix):
+  #go through each row
+  for i in range(len(old_matrix)):
+    #go through each column
+    for j in range(len(old_matrix)):
+      #check to see if the old matrix value is equal to the new matrix value
+      if old_matrix[i, j] != new_matrix[i, j]:
+        #return the number bank which is the new borrower
+        return j
+
+
+##define a function that counts all of the banks that have not paid back in full
+def shortfall_counter(yij_matrix, rij_matrix):
+  ## inititate the counter
+  shortfall_count = 0
+  ## sum up the columns( banks ) of yij
+  yij_col_sum = np.sum(yij_matrix, axis = 0)
+  ## sum up the columns of rij
+  rij_col_sum = np.sum(rij_matrix, axis = 0)
+  ## go through each column sum
+  for i in range(len(yij_col_sum)):
+    ## check if the column sum of yij is equal to rij
+    if yij_col_sum[i] != rij_col_sum[i]:
+      ## if true, then add one to the count
+        shortfall_count += 1
+    ## return the count
+  return shortfall_count
+
+##define function that sums the total amount of shortfall
+def total_dollar_amount_shortfall(yij_matrix, rij_matrix):
+  ## sum up total dollar amount of the yij matrix
+  yij_sum = np.sum(yij_matrix)
+  ## sum up total dollar amount of the rij matrix
+  rij_sum = np.sum(rij_matrix)
+  ## define total shortfall as the yij sum minus the rij sum
+  total_shortfall = yij_sum - rij_sum
+  ## return total shortfall
+  return total_shortfall
+
+##define a function that counts the number of loans not paid in full
+def loan_shortfall_counter(rij_matrix, yij_matrix):
+  count = 0
+  for i in range(len(rij_matrix)):
+    for j in range(len(rij_matrix)):
+      diff = rij_matrix[i, j] - yij_matrix[i, j]
+      if diff != 0:
+        count += 1
+  return count
+
+##function that counts how many banks that have not gotten paid back in full
+def not_paid(rij_matrix, yij_matrix):
+  count = 0
+  for i in range(len(yij_matrix)):
+    rij_sum = sum(rij_matrix[i])
+    yij_sum = sum(yij_matrix[i])
+    if rij_sum != yij_sum:
+      count += 1
+  return count
+
+
+
+##function to check if the number of loans a bank gives out is greater or less than the threshold
+def bank_size(threshold, matrix, n):
+  ## initiate list
+  lst = []
+  ## for loop to go through each row to check how many loans each bank has given out
+  for i in range(len(matrix)):
+    ## check to see if the sum is less than the threshold
+    if sum(matrix[i])/100 < threshold*n:
+      lst.append("small")
+    ## else consider it large
+    else:
+      lst.append("large")
+## return the list
+  return lst
+
+#function that identifies if the loaner is a small bank of a large bank
+def id_loaner_size(yij_matrix, new_yij_matrix, n):
+  loaner = new_loaner(yij_matrix, new_yij_matrix)
+  size = bank_size(0.6, yij_matrix, n = n)
+  for i in range(len(size)):
+    if loaner == i:
+      return size[i]
+
+
+#function that identifies if the borrower is a small bank of a large bank
+def id_borrower_size(yij_matrix, new_yij_matrix, n):
+  borrower = new_borrower(yij_matrix, new_yij_matrix)
+  size = bank_size(0.6, yij_matrix, n = n)
+  for i in range(len(size)):
+    if borrower == i:
+      return size[i]
+
+## define deliquent counter function
+def deliquent_counter(rij_matrix):
+  #initiate count
+  deliquent_count = 0
+  ## sum up columns of rij
+  rij_col_sum = np.sum(rij_matrix, axis = 0)
+  ## go through each column sum
+  for i in range(len(rij_col_sum)):
+    ## check if column sum is zero
+    if rij_col_sum[i] == 0:
+      ## if true, add one to count since bank is completely delinquent
+      deliquent_count += 1
+  # return the count
+  return deliquent_count
+
+#--------------------------------------------- create data frames and csvs-------------------------------
+
+import pandas as pd
+import os
+
+#define the repitions function:
+def create_data_frame(reps, banks):
+  # mount the drive for the csv to be printed
+  from google.colab import drive
+  drive.mount('/content/drive')
+  # csv path
+  csv_path = '/content/drive/MyDrive/Luedtke_CURI_2023/CSVs/'
+
+  # if path does not exist, creates own path
+  if not os.path.exists(csv_path):
+    os.makedirs(csv_path)
+
+  # initiate lists and dictionaries to be added to throughout the repitions and used to create data frames
+  #these lists hold the 100 dataframes from each repition
+
+  yij1 = []
+  yij_new1 = []
+  rij1 = []
+  rij_new1 = []
+  A1 = []
+  # this dictionary holds all of the summary statistics for each repition of a network
+  results = {}
+  # these lists hold all of the speicific summary statistics values and will be added too in the for loop
+  results["Generated Graph"] = []
+  results["Average eccentricity"] = []
+  results["Average path length"] = []
+  results["Average clustering"] = []
+  results["Number of links"] = []
+  results["Diameter"] = []
+  results["new_loaner_ID"] = []
+  results["new_borrower_ID"] = []
+  results["new_loaner_size"] = []
+  results["new_borrower_size"] = []
+  ## here I use delinquent when refering to a bank that has not paid all of its loans back in full
+  results["old_delinquent_count"] = []
+  results["new_delinquent_count"] = []
+  results["old_shortfall_dollars"] = []
+  results["new_shortfall_dollars"] = []
+  results["new_minus_old_shortfall_dollars"] = []
+  results["old_bank_fail_count"] = []
+  results["new_bank_fail_count"] = []
+  results["old_shortfall_loan_count"] = []
+  results["new_shortfall_loan_count"] = []
+  ##here I use shortfall when refering to a bank that is not paid back in full
+  results["old_shortfall_bank_count"] = []
+  results["new_shortfall_bank_count"] = []
+
+
+  # for loop to generate and solve the random networks a bunch of times
+  for i in range(reps):
+    # generate network with graph
+    G = generate_random_graph(n = banks, m = 8, p = 0.4)
+    #create adjacency matrix from the graph G
+    adj_matrix = nx.to_numpy_array(G)
+    #create yij using the adjacency matrix multiplied by 100
+    yij = 100*adj_matrix
+    # create new network with a link added somewhere randomly
+    yij_new = add_random_link(yij)
+    # create randomly generated A variable
+    A = np.random.normal(10, 5, len(yij))
+    # solve the first network
+    rij = solve_rij(yij, A)
+    # solve the second network
+    rij_new = solve_rij(yij_new, A)
+
+    # for each repition calculate network summary statistics
+    eccentricities = nx.eccentricity(G)
+    avg_eccentricity = sum(eccentricities.values()) / len(eccentricities)
+    avg_path_length = nx.average_shortest_path_length(G)
+    avg_clustering = nx.average_clustering(G)
+    num_links = G.number_of_edges()
+    diameter = nx.diameter(G)
+
+    # for each repition create a new data frame to be added to the data frame lists
+    yij_df = pd.DataFrame(yij)
+    yij_df["bank size"] = bank_size(0.5, yij_df, n = banks)
+    yij_df["repition"] = i + 1
+    yij_new_df = pd.DataFrame(yij_new)
+    yij_new_df["repition"] = i + 1
+    rij_new_df = pd.DataFrame(rij_new)
+    rij_new_df["repition"] = i + 1
+    rij_df = pd.DataFrame(rij)
+    rij_df["repition"] = i + 1
+    A_df = pd.DataFrame(A)
+
+    # for each repition append each list with the repition's data frame
+    yij1.append(yij_df)
+    yij_new1.append(yij_new_df)
+    rij1.append(rij_df)
+    rij_new1.append(rij_new_df)
+    A1.append(A_df)
+
+
+    # for each repition append said summary statistic of the network to the list of summary statistics
+    results["Generated Graph"].append(i + 1)
+    results["Average eccentricity"].append(avg_eccentricity)
+    results["Average path length"].append(avg_path_length)
+    results["Average clustering"].append(avg_clustering)
+    results["Number of links"].append(num_links)
+    results["Diameter"].append(diameter)
+    results["new_loaner_ID"].append(new_loaner(yij, yij_new))
+    results["new_borrower_ID"].append(new_borrower(yij, yij_new))
+    results["new_loaner_size"].append(id_loaner_size(yij, yij_new, banks))
+    results["new_borrower_size"].append(id_borrower_size(yij, yij_new, banks))
+    results["old_delinquent_count"].append(shortfall_counter(yij, rij))
+    results["new_delinquent_count"].append(shortfall_counter(yij_new, rij_new))
+    results["old_shortfall_dollars"].append(total_dollar_amount_shortfall(yij, rij))
+    results["new_shortfall_dollars"].append(total_dollar_amount_shortfall(yij_new, rij_new))
+    results["new_minus_old_shortfall_dollars"].append(total_dollar_amount_shortfall(yij_new, rij_new) - total_dollar_amount_shortfall(yij, rij))
+    results["old_bank_fail_count"].append(deliquent_counter(rij))
+    results["new_bank_fail_count"].append(deliquent_counter(rij_new))
+    results["old_shortfall_loan_count"].append(loan_shortfall_counter(rij, yij))
+    results["new_shortfall_loan_count"].append(loan_shortfall_counter(rij_new, yij_new))
+    results["old_shortfall_bank_count"].append(not_paid(rij, yij))
+    results["new_shortfall_bank_count"].append(not_paid(rij_new, yij_new))
+
+
+  # combine all of the data frames together using concat
+  yij_df_final = pd.concat(yij1, axis = 0)
+  yij_new_df_final = pd.concat(yij_new1, axis = 0)
+  rij_df_final = pd.concat(rij1, axis = 0)
+  rij_new_df_final = pd.concat(rij_new1, axis = 0)
+  results_df_final = pd.DataFrame(results)
+  A_df_final = pd.concat(A1, axis = 1)
+
+  # all data frams to csv
+  yij_df_final.to_csv(csv_path + 'yij_matrix.csv', index_label = 'Bank ID')
+  yij_new_df_final.to_csv(csv_path + 'new_yij_matrix.csv', index_label = 'Bank ID')
+  rij_df_final.to_csv(csv_path + 'rij_matrix.csv', index_label = 'Bank ID')
+  rij_new_df_final.to_csv(csv_path + 'new_rijmatrix.csv', index_label = 'Bank ID')
+  results_df_final.to_csv(csv_path + 'simulation_summary_statistics.csv', index = False)
+  A_df_final.to_csv(csv_path + 'A_values.csv', index_label = 'Bank ID')
+
+  # return the data frames to visualize in the code
+  return rij_df_final, rij_new_df_final, yij_df_final, yij_new_df_final, results_df_final, A_df_final
+
+
+#-------------------------------------------------------------final function for output----------------------------------------------
+
+# print all data frames
+print(create_data_frame(1, 50))
