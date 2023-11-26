@@ -1,0 +1,121 @@
+#Author: Henry Fisher
+#Description: This program compares the results from Mk II and Mk III and determines if they are equivilent
+
+import networkx as nx
+import numpy as np
+import random as rd
+from scipy.optimize import fsolve
+
+# Example input matrix (yij)
+#yij = np.array([[0, 100, 100],
+                #[100, 0, 100],
+                #[100, 100, 0]])
+# Create a 100x100 array with all elements as 100
+#yij = np.full((50, 50), 100)
+
+# Set the diagonal elements to 0
+#np.fill_diagonal(yij, 0)
+
+def generate_scale_free_graph(n, alpha, beta, gamma, delta_in, delta_out):
+    G = nx.scale_free_graph(n=n, alpha=alpha, beta=beta, gamma=gamma, delta_in=delta_in, delta_out=delta_out)
+    adj_matrix = nx.to_numpy_array(G)
+
+    # Ensure adjacency matrix has no rows with all zeros
+    while np.any(adj_matrix.sum(axis=1) == 0):
+        rows_with_zero = np.where(adj_matrix.sum(axis=1) == 0)[0]
+        for row in rows_with_zero:
+            non_zero_nodes = np.nonzero(adj_matrix.sum(axis=0))[0]
+            selected_node = rd.choice(non_zero_nodes)
+            adj_matrix[selected_node, row] = 1
+            adj_matrix[row, selected_node] = 1
+
+    # Multiply non-zero elements by 100
+    adj_matrix = np.where(adj_matrix != 0, adj_matrix * 100, adj_matrix)
+
+    # Invert the matrix to reverse link directions
+    adj_matrix = adj_matrix.T
+
+    return adj_matrix, G
+
+yij, G = generate_scale_free_graph(n=50, alpha=0.41, beta=0.54, gamma=0.05, delta_in=0, delta_out=0)
+
+
+# Define constraints
+c = 20  # cash on hand
+zj = 7  # short term investment return
+A = 10  # long term project result
+v = 8  # senior obligations
+
+#-------------------
+# Mk II
+def solve_rij2(yij):
+    def Bankfunc2(z):
+        F = np.empty(yij.size) #creates an empty array (or maybe list? data structure) the same size as
+        for j in range(len(yij)): #each j is a column in the adjacency matrix #we switched the i and j for loops so we can calculate yj n times instead of n*n times
+          yj = np.sum(yij[:, j]) #this calculates the total debt (yj) for each bank j
+          for i in range(len(yij)): #each i is a row in the adjacency matrix
+            yij_yj_ratio = yij[i, j] / yj #this calculates the fraction of loans bank j owes to bank i out of bank j's total debt
+            max_min_term = max(min(yj, np.sum(z[j*len(yij):j*len(yij)+(len(yij))]) + c + zj + A - v), 0) #this is most of the model
+            #np.sum(z[j*len(yij):j*len(yij)+(len(yij))]) adds up all of the payments to bank j
+            F[i*len(yij)+j] = yij_yj_ratio * max_min_term - z[i*len(yij)+j] #this puts it all together
+        return F
+
+    # Initial guess for z
+    z_guess2 = np.full(yij.size, 100)
+
+    # Solve for rij using fsolve
+    z_solution2 = fsolve(Bankfunc2, z_guess2)
+
+    # Reshape the solution back to the original shape of yij
+    rij_solution2 = z_solution2.reshape(yij.shape)
+
+    return rij_solution2
+
+# Solve for rij
+rij2 = solve_rij2(yij)
+
+#------------------
+#Mk III
+def solve_rij3(yij):
+    def Bankfunc3(z):
+        F = np.empty(yij.size) #creates an empty array (or maybe list? data structure) the same size as
+        for j in range(len(yij)): #each j is a column in the adjacency matrix #we switched the i and j for loops so we can calculate yj n times instead of n*n times
+          yj = np.sum(yij[:, j]) #this calculates the total debt (yj) for each bank j
+          for i in range(len(yij)): #each i is a row in the adjacency matrix
+            if yij[i, j] == 0:
+              F[i*len(yij)+j] = z[i*len(yij)+j] #if yij = 0 then we assume rij = 0
+            else:
+              F[i*len(yij)+j] = yij[i, j] / yj * max(min(yj, np.sum(z[j*len(yij):j*len(yij)+(len(yij))]) + c + zj + A - v), 0) - z[i*len(yij)+j] #the actual math of the model
+        return F
+
+    # Initial guess for z
+    z_guess3 = np.full(yij.size, 100)
+
+    # Solve for rij using fsolve
+    z_solution3 = fsolve(Bankfunc3, z_guess3)
+
+    # Reshape the solution back to the original shape of yij
+    rij_solution3 = z_solution3.reshape(yij.shape)
+
+    return rij_solution3
+
+# Solve for rij
+rij3 = solve_rij3(yij)
+
+#----------------
+#Compare the two arrays
+
+diff = rij2 - rij3
+
+count = 0
+
+for i in range(len(diff)):
+  for j in range(len(diff)):
+    # Check if the absolute value is 0
+    if diff[i,j] != 0:
+        # Implement the counter
+        count += 1
+if count == 0:
+  print("The results are identical")
+else:
+  print(count)
