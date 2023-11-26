@@ -1,0 +1,120 @@
+from networkx.algorithms.bipartite.cluster import average_clustering
+import networkx as nx
+import numpy as np
+import random as rd
+from scipy.optimize import fsolve
+from scipy.sparse.csgraph import dijkstra
+
+def generate_scale_free_graph(n, alpha, beta, gamma, delta_in, delta_out):
+    #G = nx.scale_free_graph(n=n, alpha=alpha, beta=beta, gamma=gamma, delta_in=delta_in, delta_out=delta_out)
+    G = nx.powerlaw_cluster_graph(n=5068, m = 7, p = 0.54)
+    adj_matrix = nx.to_numpy_array(G)
+
+    # Ensure adjacency matrix has no rows with all zeros
+    while np.any(adj_matrix.sum(axis=1) == 0):
+        rows_with_zero = np.where(adj_matrix.sum(axis=1) == 0)[0]
+        for row in rows_with_zero:
+            non_zero_nodes = np.nonzero(adj_matrix.sum(axis=0))[0]
+            selected_node = rd.choice(non_zero_nodes)
+            adj_matrix[selected_node, row] = 1
+            adj_matrix[row, selected_node] = 1
+
+    # Multiply non-zero elements by 100
+    adj_matrix = np.where(adj_matrix != 0, adj_matrix * 1, adj_matrix)
+
+    # Invert the matrix to reverse link directions
+    adj_matrix = adj_matrix.T
+
+    return adj_matrix, G
+
+yij, G = generate_scale_free_graph(n=5086, alpha=0.067, beta=0.929, gamma=0.004, delta_in=0, delta_out=0)
+
+print("Number of links:", np.sum(yij))
+n = np.shape(yij)
+print("number of nodes:", n)
+
+# alpha=0.028, beta=0.927, gamma=0.045
+
+#yij = np.array([[0, 100, 100, 100, 100],
+                #[100, 0, 0, 100, 0],
+                #[100, 0, 0, 100, 100],
+                #[0, 100, 0, 0, 0],
+                #[100, 100, 0, 0, 0]])
+
+D = dijkstra(csgraph = yij, directed = True)
+
+n = np.shape(yij)
+
+# Convert the adjacency matrix to a sparse matrix
+adj_matrix_sparse = csr_matrix(yij)
+
+# Compute the shortest paths using Dijkstra's algorithm
+distances, predecessors = dijkstra(adj_matrix_sparse, directed=True, return_predecessors=True)
+
+# Compute the connected components
+n_components, component_labels = connected_components(adj_matrix_sparse, directed=True)
+
+# Number of links
+print("Number of links:", np.sum(yij))
+print("number of nodes:", n)
+#Calculate the in-degree
+print("The average in degree is", (yij.sum(0) / n))
+
+#Calculate the out-degree
+print("The average out degree is ", (yij.sum(1) / n))
+
+
+# Initialize variables for average path length calculation
+total_path_length = 0
+path_count = 0
+
+# Iterate over each connected component
+for component_idx in range(n_components):
+    component_indices = np.where(component_labels == component_idx)[0]
+
+    # Compute the shortest paths within the connected component
+    component_distances = dijkstra(adj_matrix_sparse, directed=True, indices=component_indices)
+
+    # Exclude infinite path lengths
+    valid_distances = component_distances[np.isfinite(component_distances)]
+
+    # Update the total path length and count
+    total_path_length += np.sum(valid_distances)
+    path_count += len(valid_distances)
+
+# Calculate the average path length
+average_path_length = total_path_length / path_count
+print("The average path length is", average_path_length)
+
+# Compute the diameter
+diameter = np.amax(distances[np.isfinite(distances)])
+print("The diameter is", diameter)
+
+# Avg Eccentricity
+eccentricities = nx.eccentricity(G)
+average_eccentricity = sum(eccentricities.values()) / len(eccentricities)
+print("Average Eccentricity:", average_eccentricity)
+
+#Clustering Coefficient
+clustering_coefficients = []
+for node in G.nodes():
+    neighbors = list(G.neighbors(node))
+    num_neighbors = len(neighbors)
+
+    if num_neighbors >= 2:
+        num_edges = 0
+        for i, neighbor1 in enumerate(neighbors):
+            for neighbor2 in neighbors[i+1:]:
+                if G.has_edge(neighbor1, neighbor2):
+                    num_edges += 1
+        clustering_coefficient = 2 * num_edges / (num_neighbors * (num_neighbors - 1))
+        clustering_coefficients.append(clustering_coefficient)
+
+average_clustering_coefficient = sum(clustering_coefficients) / len(clustering_coefficients)
+print("Average Clustering Coefficient:", average_clustering_coefficient)
+
+# Clustering Coefficient
+nx.average_clustering(G)
+#clustering_coefficients = nx.clustering(G)
+average_clustering_coefficient = sum(clustering_coefficients.values()) / len(clustering_coefficients)
+print("Average Clustering Coefficient:", average_clustering_coefficient)
