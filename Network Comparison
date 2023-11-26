@@ -1,0 +1,99 @@
+# Compares two generated networks to see how different they are
+
+import networkx as nx
+import numpy as np
+import random as rd
+
+
+n = 25
+m = 8
+p = 0.4
+
+# Generate the first graph
+G_one = nx.powerlaw_cluster_graph(n, m, p)
+yij_one = nx.to_numpy_array(G_one)
+
+# Generate the second graph
+G_two = nx.powerlaw_cluster_graph(n, m, p)
+yij_two = nx.to_numpy_array(G_two)
+
+GA = nx.DiGraph()
+GA.add_nodes_from(range(n))
+
+for i in range(n):
+  for j in range(n):
+    if i > j:
+      if yij_one[i][j] != 0:
+            GA.add_edge(i, j)
+    elif i < j:
+      if yij_two[i][j] != 0:
+            GA.add_edge(i, j)
+
+# Generate the third graph
+G_three = nx.powerlaw_cluster_graph(n, m, p)
+yij_three = nx.to_numpy_array(G_three)
+
+# Generate the fourth graph
+G_four = nx.powerlaw_cluster_graph(n, m, p)
+yij_four = nx.to_numpy_array(G_four)
+
+GB = nx.DiGraph()
+GB.add_nodes_from(range(n))
+
+for i in range(n):
+  for j in range(n):
+    if i > j:
+      if yij_three[i][j] != 0:
+            GB.add_edge(i, j)
+    elif i < j:
+      if yij_four[i][j] != 0:
+            GB.add_edge(i, j)
+
+
+yij_A = nx.to_numpy_array(GA)
+yij_B = nx.to_numpy_array(GB)
+
+#----------------------------
+def add_random_link(x):
+  ##defines n which is the length of said matrix
+  n = len(x)
+  ##creates a copy matrix to change and then compare to og matrix
+  x1 = np.copy(x)
+  ##uses while loop that should break once the arrays are not equal
+  while np.array_equal(x, x1):
+    ##chooses row and column randomly
+    row_choice = rd.randint(0, n-1)
+    col_choice = rd.randint(0, n-1)
+    ## checks if there is no link in said row or column (can be modified to also check if row and column are not a diagonal)
+    if x1[row_choice, col_choice] == 0 and col_choice != row_choice:
+      ### if there is no link then adds the link and therefore breaks the while loop
+      x1[row_choice, col_choice] += 1
+    ##returns the new matrix to be compared to the old one and then to be printed
+  return x1
+
+yij_new = add_random_link(yij_A)
+#----------------------------
+num_linksA = GA.number_of_edges()
+num_linksB = GB.number_of_edges()
+
+print("Number of links in graph A:", num_linksA)
+print("Number of links in graph A.new", np.sum(yij_new))
+print("Number of links in graph B:", num_linksB)
+
+
+diff = yij_A - yij_B
+
+count = 0
+
+for i in range(len(diff)):
+  for j in range(len(diff)):
+    # Check if the absolute value is 0
+    if diff[i,j] != 0:
+        # Implement the counter
+        count += 1
+if count == 0:
+  print("The graphs are identical")
+else:
+  print("Number of different elements:", count)
+  print("Total possible percent difference", count / (num_linksA + num_linksB))
+  print("Total percentage of different elements:", count / (n * n))
