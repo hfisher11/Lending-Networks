@@ -1,0 +1,46 @@
+# Author: Henry Fisher
+
+import numpy as np
+from scipy.optimize import fsolve
+
+# Define constraints
+c = 10  # cash on hand
+zj = 7  # short-term investment return
+A = 13  # long-term project result
+v = 8  # senior obligations
+
+# Define the 3x3 array to input into the solving function
+yij = np.array([[0, 100, 0],
+                [100, 0, 100],
+                [100, 100, 0]])
+
+# Define rij_solution before using it in the solve_rij function
+rij_solution = np.zeros_like(yij)
+
+# Function to solve for rij
+def solve_rij(rij):
+    rij = rij.reshape(yij.shape)  # Reshape rij to the original shape of yij
+    F = np.empty_like(yij)  # Initialize F with the same shape as yij
+    for i in range(len(yij)):
+        for j in range(len(yij)):
+            if i == j:  # If it's a diagonal element
+                F[i, j] = 0  # Set the diagonal element in F to zero
+            else:
+                row_sum_rij = np.sum(rij[i, :])
+                yij_yj_ratio = yij[i, j] / np.sum(yij[:, j])
+                max_min_term = np.maximum(np.minimum(np.sum(yij[:, j]), row_sum_rij + c + zj + A - v), 0)
+                F[i, j] = np.maximum(yij_yj_ratio * max_min_term - rij[i, j], 0)
+
+    return F.flatten()  # Return F as a flattened array
+
+# Initial guess for rij
+rij_guess = np.full_like(yij, 0.1).flatten()
+
+# Solve for rij using fsolve
+rij_solution = fsolve(solve_rij, rij_guess)
+
+# Reshape the solution back to the original shape of yij
+rij_solution = rij_solution.reshape(yij.shape)
+
+print("Solution:")
+print(rij_solution)
